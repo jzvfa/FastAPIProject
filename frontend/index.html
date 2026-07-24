@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BookShelf — 图书管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <!-- 登录 / 注册 -->
+  <section id="auth-view" class="auth-view">
+    <div class="auth-panel">
+      <p class="brand">BookShelf</p>
+      <h1 id="auth-title">登录</h1>
+      <p class="auth-hint" id="auth-hint">登录后管理图书与 AI 推荐</p>
+
+      <form id="auth-form" autocomplete="on">
+        <label>
+          用户名
+          <input type="text" id="auth-username" name="username" required minlength="2" placeholder="输入用户名" />
+        </label>
+        <label>
+          密码
+          <input type="password" id="auth-password" name="password" required minlength="4" placeholder="输入密码" />
+        </label>
+        <button type="submit" class="btn btn-primary" id="auth-submit">登录</button>
+      </form>
+
+      <p class="auth-switch">
+        <span id="auth-switch-text">还没有账号？</span>
+        <button type="button" class="link-btn" id="auth-toggle">去注册</button>
+      </p>
+      <p class="form-msg" id="auth-msg" hidden></p>
+    </div>
+  </section>
+
+  <!-- 主界面 -->
+  <section id="app-view" class="app-view" hidden>
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="brand">BookShelf</span>
+        <span class="user-chip" id="current-user"></span>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="books" role="tab">图书管理</button>
+        <button type="button" class="tab" data-tab="ai" role="tab">AI 助手</button>
+      </nav>
+      <button type="button" class="btn btn-ghost" id="logout-btn">退出</button>
+    </header>
+
+    <main class="main">
+      <!-- 图书 -->
+      <div id="tab-books" class="tab-panel active">
+        <div class="toolbar">
+          <form id="search-form" class="search-form">
+            <input type="search" id="keyword" placeholder="搜索书名或作者…" />
+            <button type="submit" class="btn btn-secondary">搜索</button>
+          </form>
+          <button type="button" class="btn btn-primary" id="open-create">添加图书</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="book-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>书名</th>
+                <th>作者</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="book-tbody">
+              <tr><td colspan="4" class="empty">加载中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pager">
+          <button type="button" class="btn btn-ghost" id="prev-page">上一页</button>
+          <span id="page-info">第 1 页</span>
+          <button type="button" class="btn btn-ghost" id="next-page">下一页</button>
+        </div>
+      </div>
+
+      <!-- AI -->
+      <div id="tab-ai" class="tab-panel">
+        <div class="chat-layout">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-bubble bot">
+              你好，我是图书推荐助手。可以问我书目推荐、作者介绍或阅读建议。
+            </div>
+          </div>
+          <form id="chat-form" class="chat-form">
+            <input type="text" id="chat-input" placeholder="例如：推荐几本科幻小说…" required />
+            <button type="submit" class="btn btn-primary" id="chat-submit">发送</button>
+          </form>
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 新增 / 编辑弹层 -->
+  <dialog id="book-dialog">
+    <form id="book-form" method="dialog">
+      <h2 id="dialog-title">添加图书</h2>
+      <input type="hidden" id="book-id" />
+      <label>
+        书名
+        <input type="text" id="book-title" required placeholder="书名" />
+      </label>
+      <label>
+        作者
+        <input type="text" id="book-author" required placeholder="作者" />
+      </label>
+      <p class="form-msg" id="book-msg" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="dialog-cancel">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

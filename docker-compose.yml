@@ -5,8 +5,8 @@ services:
     image: mysql:8.0
     container_name: book-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: 123456
-      MYSQL_DATABASE: testdb
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
       - "3306:3306"
     volumes:
@@ -27,11 +27,16 @@ services:
       - mysql
       - redis
     environment:
-      DATABASE_URL: mysql+asyncmy://root:123456@mysql:3306/testdb
+      # 名字必须和 config.py 里 os.getenv(...) 一致
+      # Docker 网络里主机名用服务名 mysql，不能写 localhost
+      SQLALCHEMY_DATABASE_URL: mysql+asyncmy://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_DB: 0
       SECRET_KEY: ${SECRET_KEY}
-
+      API_KEY: ${API_KEY}
+      BASE_URL: ${BASE_URL}
+      LLM_MODEL: ${LLM_MODEL}
     volumes:
       - ./logs:/app/logs
 

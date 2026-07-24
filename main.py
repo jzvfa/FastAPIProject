@@ -1,6 +1,10 @@
+from pathlib import Path
+
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -12,6 +16,8 @@ from auth import router as auth_router
 
 from loguru import logger
 import sys
+
+from ai import router as ai_router
 
 # ---------- 日志配置 ----------
 logger.add(
@@ -28,7 +34,25 @@ logger.add(
 )
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth_router)
+app.include_router(ai_router)
+
+FRONTEND_DIR = Path(__file__).parent / "frontend"
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+
+@app.get("/")
+async def index():
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 # ---------- 统一响应辅助函数 ----------
@@ -189,3 +213,7 @@ async def get_books(
         "page_size": page_size,
         "items": books_data
     })
+
+# @app.get("/books/ai/")
+# async def get_books_ai()
+#     pass
