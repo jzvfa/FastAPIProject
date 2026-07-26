@@ -43,6 +43,14 @@ docker compose up --build
 
 同样访问：http://127.0.0.1:8000/
 
+## 运行测试
+
+本机需已配置 `.env`，并且 MySQL 可连接：
+
+```bash
+.\.venv\Scripts\python.exe -m pytest tests/test_auth.py -v
+```
+
 ## 主要接口
 
 | 模块 | 路径 |
