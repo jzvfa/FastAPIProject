@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from database import engine, Base, get_db, Book
+from database import engine, Base, get_db, Book, User
 from redis_client import redis_client, get_cache, set_cache
-from auth import router as auth_router
+from auth import router as auth_router, get_current_user
 
 from loguru import logger
 import sys
@@ -110,7 +110,11 @@ class BookUpdate(BaseModel):
 
 
 @app.post("/books/")
-async def create_book(book: BookCreate, db: AsyncSession = Depends(get_db)):
+async def create_book(
+    book: BookCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     if not book.title or not book.author:
         raise HTTPException(status_code=400, detail="标题和作者不能为空")
     new_book = Book(title=book.title, author=book.author)
@@ -140,7 +144,12 @@ async def get_book(book_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.put("/books/{book_id}")
-async def update_book(book_id: int, book_update: BookUpdate, db: AsyncSession = Depends(get_db)):
+async def update_book(
+    book_id: int,
+    book_update: BookUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
@@ -158,7 +167,11 @@ async def update_book(book_id: int, book_update: BookUpdate, db: AsyncSession = 
 
 
 @app.delete("/books/{book_id}")
-async def delete_book(book_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_book(
+    book_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:

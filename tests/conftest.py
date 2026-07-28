@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 from main import app
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def client():
-    """整个测试文件共用一个 client，避免反复触发 startup 连库出问题。"""
+    """整个测试会话共用一个 client，避免反复 startup 连库不稳定。"""
     with TestClient(app) as c:
         yield c

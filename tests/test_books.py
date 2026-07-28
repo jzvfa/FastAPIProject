@@ -1,7 +1,5 @@
 """
-图书 CRUD 接口测试
-
-套路：先创建 → 断言 → 再测查/改/删
+图书 CRUD 接口测试（写操作需要登录 Token）
 
 怎么跑（需本机 MySQL；Redis 可不开启，测试里已 mock）：
     .\\.venv\\Scripts\\python.exe -m pytest tests/test_books.py -v
@@ -13,6 +11,10 @@ import pytest
 
 def _unique_title() -> str:
     return f"pytest书_{uuid.uuid4().hex[:8]}"
+
+
+def _unique_username() -> str:
+    return f"book_user_{uuid.uuid4().hex[:8]}"
 
 
 @pytest.fixture(autouse=True)
@@ -33,9 +35,33 @@ def mock_redis(monkeypatch):
     monkeypatch.setattr("main.redis_client.delete", fake_delete)
 
 
-def _create_book(client, title: str, author: str = "测试作者") -> dict:
+@pytest.fixture
+def auth_headers(client):
+    """注册并登录，返回带 Bearer Token 的请求头。"""
+    username = _unique_username()
+    password = "test1234"
+    reg = client.post(
+        "/auth/register",
+        json={"username": username, "password": password},
+    )
+    assert reg.status_code == 200
+
+    login = client.post(
+        "/auth/login",
+        data={"username": username, "password": password},
+    )
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _create_book(client, auth_headers, title: str, author: str = "测试作者") -> dict:
     """创建一本书，返回 data（含 id/title/author）。"""
-    resp = client.post("/books/", json={"title": title, "author": author})
+    resp = client.post(
+        "/books/",
+        json={"title": title, "author": author},
+        headers=auth_headers,
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["code"] == 200
@@ -45,13 +71,23 @@ def _create_book(client, title: str, author: str = "测试作者") -> dict:
     return body["data"]
 
 
-def test_create_book(client):
+def test_create_book_unauthorized(client):
+    """没 Token 不能创建。"""
+    resp = client.post(
+        "/books/",
+        json={"title": _unique_title(), "author": "测试作者"},
+    )
+    assert resp.status_code == 401
+
+
+def test_create_book(client, auth_headers):
     title = _unique_title()
     author = "测试作者"
 
     resp = client.post(
         "/books/",
         json={"title": title, "author": author},
+        headers=auth_headers,
     )
 
     assert resp.status_code == 200
@@ -61,11 +97,12 @@ def test_create_book(client):
     assert body["data"]["author"] == author
 
 
-def test_get_book(client):
+def test_get_book(client, auth_headers):
     title = _unique_title()
-    book = _create_book(client, title=title, author="作者A")
+    book = _create_book(client, auth_headers, title=title, author="作者A")
     book_id = book["id"]
 
+    # 查询仍可公开访问（不需要 Token）
     resp = client.get(f"/books/{book_id}")
     assert resp.status_code == 200
     body = resp.json()
@@ -75,11 +112,10 @@ def test_get_book(client):
     assert body["data"]["author"] == "作者A"
 
 
-def test_list_books(client):
+def test_list_books(client, auth_headers):
     title = _unique_title()
-    _create_book(client, title=title, author="作者B")
+    _create_book(client, auth_headers, title=title, author="作者B")
 
-    # 用 keyword 精确搜，避免列表第一页没有这本新书
     resp = client.get(
         "/books/",
         params={"page": 1, "page_size": 10, "keyword": title},
@@ -94,9 +130,9 @@ def test_list_books(client):
     assert title in titles
 
 
-def test_update_book(client):
+def test_update_book(client, auth_headers):
     title = _unique_title()
-    book = _create_book(client, title=title, author="旧作者")
+    book = _create_book(client, auth_headers, title=title, author="旧作者")
     book_id = book["id"]
 
     new_title = f"{title}_已更新"
@@ -104,6 +140,7 @@ def test_update_book(client):
     resp = client.put(
         f"/books/{book_id}",
         json={"title": new_title, "author": new_author},
+        headers=auth_headers,
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -113,12 +150,12 @@ def test_update_book(client):
     assert body["data"]["author"] == new_author
 
 
-def test_delete_book(client):
+def test_delete_book(client, auth_headers):
     title = _unique_title()
-    book = _create_book(client, title=title, author="待删作者")
+    book = _create_book(client, auth_headers, title=title, author="待删作者")
     book_id = book["id"]
 
-    del_resp = client.delete(f"/books/{book_id}")
+    del_resp = client.delete(f"/books/{book_id}", headers=auth_headers)
     assert del_resp.status_code == 200
     assert del_resp.json()["code"] == 200
 
