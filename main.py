@@ -117,7 +117,7 @@ async def create_book(
 ):
     if not book.title or not book.author:
         raise HTTPException(status_code=400, detail="标题和作者不能为空")
-    new_book = Book(title=book.title, author=book.author)
+    new_book = Book(title=book.title, author=book.author, user_id=current_user.id)
     db.add(new_book)
     await db.commit()
     await db.refresh(new_book)
@@ -152,6 +152,8 @@ async def update_book(
 ):
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
+    if book.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权限操作")
     if not book:
         raise HTTPException(status_code=404, detail="图书不存在")
 
@@ -172,6 +174,8 @@ async def delete_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if book.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权限操作")
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
@@ -226,7 +230,3 @@ async def get_books(
         "page_size": page_size,
         "items": books_data
     })
-
-# @app.get("/books/ai/")
-# async def get_books_ai()
-#     pass

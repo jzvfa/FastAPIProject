@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from datetime import datetime
 
 from config import config
@@ -37,6 +37,7 @@ class Book(Base):
     title = Column(String(100), nullable=False, comment="书名")
     author = Column(String(50), nullable=False, comment="作者")
     created_at = Column(DateTime, default=datetime.now)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
 class User(Base):
     __tablename__ = "users"
