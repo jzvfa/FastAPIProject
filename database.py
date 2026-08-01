@@ -36,6 +36,7 @@ class Book(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     title = Column(String(100), nullable=False, comment="书名")
     author = Column(String(50), nullable=False, comment="作者")
+    quantity = Column(Integer, nullable=False, default=0, comment="数量")
     created_at = Column(DateTime, default=datetime.now)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
