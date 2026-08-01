@@ -11,7 +11,6 @@ from sqlalchemy import select, func
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from database import engine, Base, get_db, Book, User
-from redis_client import redis_client, get_cache, set_cache
 from auth import router as auth_router, get_current_user
 
 from loguru import logger
@@ -102,11 +101,13 @@ async def startup():
 class BookCreate(BaseModel):
     title: str
     author: str
+    quantity: int = 1
 
 
 class BookUpdate(BaseModel):
     title: str
     author: str
+    quantity: int
 
 
 @app.post("/books/")
@@ -115,32 +116,23 @@ async def create_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not book.title or not book.author:
+    title = (book.title or "").strip()
+    author = (book.author or "").strip()
+    if not title or not author:
         raise HTTPException(status_code=400, detail="标题和作者不能为空")
-    new_book = Book(title=book.title, author=book.author, user_id=current_user.id)
+    if book.quantity is None or book.quantity < 0:
+        raise HTTPException(status_code=400, detail="数量不能为空且不能为负数")
+
+    new_book = Book(
+        title=title,
+        author=author,
+        quantity=book.quantity,
+        user_id=current_user.id,
+    )
     db.add(new_book)
     await db.commit()
     await db.refresh(new_book)
     return success_response(data=new_book, msg="添加成功")
-
-
-@app.get("/books/{book_id}")
-async def get_book(book_id: int, db: AsyncSession = Depends(get_db),current_user: User = Depends(get_current_user)):
-    cache_key = f"book:{book_id}"
-    cached_book = await get_cache(cache_key)
-    if cached_book:
-        logger.info(f"✅ 命中了 Redis 缓存: {cache_key}")
-        return success_response(data=cached_book)
-
-    result = await db.execute(select(Book).where(Book.user_id == current_user.id))
-    book = result.scalar_one_or_none()
-    if not book:
-        raise HTTPException(status_code=404, detail="图书不存在")
-
-    book_dict = {"id": book.id, "title": book.title, "author": book.author}
-    await set_cache(cache_key, book_dict, expire=60)
-    logger.info(f"🔄 从 MySQL 查询，并写入 Redis: {cache_key}")
-    return success_response(data=book_dict)
 
 
 @app.put("/books/{book_id}")
@@ -152,18 +144,21 @@ async def update_book(
 ):
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
-    
     if not book:
         raise HTTPException(status_code=404, detail="图书不存在")
 
-    book.title = book_update.title
-    book.author = book_update.author
+    title = (book_update.title or "").strip()
+    author = (book_update.author or "").strip()
+    if not title or not author:
+        raise HTTPException(status_code=400, detail="标题和作者不能为空")
+    if book_update.quantity is None or book_update.quantity < 0:
+        raise HTTPException(status_code=400, detail="数量不能为空且不能为负数")
+
+    book.title = title
+    book.author = author
+    book.quantity = book_update.quantity
     await db.commit()
     await db.refresh(book)
-
-    cache_key = f"book:{book_id}"
-    await redis_client.delete(cache_key)
-    logger.info(f"🗑️ 已删除 Redis 缓存: {cache_key}")
     return success_response(data=book, msg="更新成功")
 
 
@@ -173,57 +168,80 @@ async def delete_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-   
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="图书不存在")
     await db.delete(book)
     await db.commit()
-
-    cache_key = f"book:{book_id}"
-    deleted_count = await redis_client.delete(cache_key)
-    if deleted_count:
-        logger.info(f"🗑️ 已删除 Redis 缓存: {cache_key}")
-    else:
-        logger.info(f"ℹ️ Redis 中无此缓存: {cache_key}")
     return success_response(msg=f"图书 ID {book_id} 已删除")
 
 
 @app.get("/books/")
 async def get_books(
-        page: int = Query(default=1, ge=1, description="当前页码"),
-        page_size: int = Query(default=10, ge=1, le=100, description="每页条数"),
-        keyword: str | None = Query(default=None, description="书名或作者关键词"),
-        db: AsyncSession = Depends(get_db)
+    page: int = Query(default=1, ge=1, description="当前页码"),
+    page_size: int = Query(default=10, ge=1, le=100, description="每页条数"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     skip = (page - 1) * page_size
 
-    stmt = select(Book)
-    if keyword:
-        stmt = stmt.where(
-            Book.title.ilike(f"%{keyword}%") | Book.author.ilike(f"%{keyword}%")
-        )
-
-    count_stmt = select(func.count(Book.id))
-    if keyword:
-        count_stmt = count_stmt.where(
-            Book.title.ilike(f"%{keyword}%") | Book.author.ilike(f"%{keyword}%")
-        )
-    total = await db.scalar(count_stmt)
-
-    stmt = stmt.offset(skip).limit(page_size)
-    result = await db.execute(stmt)
+    total = await db.scalar(select(func.count(Book.id)))
+    result = await db.execute(select(Book).offset(skip).limit(page_size))
     books = result.scalars().all()
 
     books_data = [
-        {"id": book.id, "title": book.title, "author": book.author}
+        {
+            "id": book.id,
+            "title": book.title,
+            "author": book.author,
+            "quantity": book.quantity,
+        }
         for book in books
     ]
 
-    return success_response(data={
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "items": books_data
-    })
+    return success_response(
+        data={
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": books_data,
+        },
+        msg="获取成功",
+    )
+
+
+@app.get("/books/like")
+async def get_books_like(
+    keyword: str | None = Query(default=None, description="书名或作者关键词（模糊查询）"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    kw = (keyword or "").strip()
+    if not kw:
+        raise HTTPException(status_code=400, detail="关键词不能为空")
+
+    result = await db.execute(
+        select(Book).where(
+            Book.title.ilike(f"%{kw}%") | Book.author.ilike(f"%{kw}%")
+        )
+    )
+    books = result.scalars().all()
+    books_data = [
+        {
+            "id": book.id,
+            "title": book.title,
+            "author": book.author,
+            "quantity": book.quantity,
+        }
+        for book in books
+    ]
+    return success_response(
+        data={
+            "total": len(books_data),
+            "page": 1,
+            "page_size": len(books_data),
+            "items": books_data,
+        },
+        msg="获取成功",
+    )

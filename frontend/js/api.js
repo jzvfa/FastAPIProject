@@ -1,7 +1,7 @@
 /**
  * API 封装 — 对应后端接口
  * Auth:  POST /auth/register, POST /auth/login
- * Books: GET/POST /books/, GET/PUT/DELETE /books/{id}
+ * Books: GET/POST /books/, PUT/DELETE /books/{id}
  * AI:    POST /ai/chat
  */
 const API_BASE = "";
@@ -102,29 +102,29 @@ const api = {
 
   // ---------- Books ----------
   async listBooks({ page = 1, pageSize = 10, keyword = "" } = {}) {
+    // 有关键词走模糊查询；否则走分页列表
+    if (keyword) {
+      const params = new URLSearchParams({ keyword });
+      return request(`/books/like?${params}`);
+    }
     const params = new URLSearchParams({
       page: String(page),
       page_size: String(pageSize),
     });
-    if (keyword) params.set("keyword", keyword);
     return request(`/books/?${params}`);
   },
 
-  async getBook(id) {
-    return request(`/books/${id}`);
-  },
-
-  async createBook(title, author) {
+  async createBook(title, author, quantity = 1) {
     return request("/books/", {
       method: "POST",
-      json: { title, author },
+      json: { title, author, quantity },
     });
   },
 
-  async updateBook(id, title, author) {
+  async updateBook(id, title, author, quantity) {
     return request(`/books/${id}`, {
       method: "PUT",
-      json: { title, author },
+      json: { title, author, quantity },
     });
   },
 

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import InMemorySaver
-from sqlalchemy import select
+from sqlalchemy import select, update
 from auth import get_current_user
 from database import User, Book, AsyncSessionLocal
 from config import config
@@ -36,8 +36,9 @@ SYSTEM_PROMPT = """你是图书馆的馆藏管理助手，协助管理员维护�
 
 你可以：
 1. 回答与书籍、馆藏、阅读相关的问题；
-2. 当管理员要求上架/录入图书时，调用 create_book_tool（需要书名和作者）；
-3. 当管理员明确确认要删除/下架某本书时，再调用 delete_book_tool（需要书名）。
+2. 当管理员要求上架/录入图书时，调用 create_book_tool（需要书名、作者、数量）；
+3. 当管理员明确确认要删除/下架某本书时，再调用 delete_book_tool（需要书名）；
+4. 当管理员要更新书籍数量时，调用 update_book_tool（需要书名、作者、数量）。
 
 注意：
 - 删除前若管理员尚未确认，先向管理员确认，不要擅自删除；
@@ -48,9 +49,9 @@ SYSTEM_PROMPT = """你是图书馆的馆藏管理助手，协助管理员维护�
 checkpointer = InMemorySaver()
 
 @tool
-async def create_book_tool(title:str,author:str,config:RunnableConfig)->str:
+async def create_book_tool(title:str,author:str,quantity:int,config:RunnableConfig)->str:
     """
-    当管理员要上架/录入新书时调用。需要书名和作者。
+    当管理员要上架/录入新书时调用。需要书名、作者和数量。
     """
     user_id = config.get("configurable", {}).get("user_id")
     if not user_id:
@@ -62,8 +63,25 @@ async def create_book_tool(title:str,author:str,config:RunnableConfig)->str:
             if result:
                 return f"书籍{title}已存在"
             else:
-                db.add(Book(title=title, author=author, user_id=user_id))
+                db.add(Book(title=title, author=author, user_id=user_id,quantity=quantity))
                 return f"书籍{title}录入成功"
+
+@tool
+async def update_book_tool(title:str,author:str,quantity:int,config:RunnableConfig)->str:
+    """
+    当管理员要更新书籍数量时调用，需要书名和作者
+    """
+    user_id = config.get("configurable",{}).get("user_id")
+    if not user_id:
+        return "权限不足，无法更新书籍数量"
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            book = await db.execute(select(Book).where(Book.title == title, Book.author == author))
+            book = book.scalar_one_or_none()
+            if not book:
+                return f"书籍{title}不存在"
+            result = await db.execute(update(Book).where(Book.id == book.id).values(quantity=quantity))
+            return f"书籍{title}数量更新成功"
 
 @tool
 async def delete_book_tool(title:str,config:RunnableConfig)->str:
@@ -85,7 +103,7 @@ async def delete_book_tool(title:str,config:RunnableConfig)->str:
 
 agent = create_agent(
         model=llm,
-        tools=[create_book_tool,delete_book_tool],
+        tools=[create_book_tool,delete_book_tool,update_book_tool],
         system_prompt=SYSTEM_PROMPT,
         checkpointer=checkpointer,
             )

@@ -69,11 +69,12 @@
                 <th>ID</th>
                 <th>书名</th>
                 <th>作者</th>
+                <th>数量</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody id="book-tbody">
-              <tr><td colspan="4" class="empty">加载中…</td></tr>
+              <tr><td colspan="5" class="empty">加载中…</td></tr>
             </tbody>
           </table>
         </div>
@@ -114,6 +115,10 @@
       <label>
         作者
         <input type="text" id="book-author" required placeholder="作者" />
+      </label>
+      <label>
+        数量
+        <input type="number" id="book-quantity" required min="0" step="1" value="1" placeholder="数量" />
       </label>
       <p class="form-msg" id="book-msg" hidden></p>
       <div class="dialog-actions">

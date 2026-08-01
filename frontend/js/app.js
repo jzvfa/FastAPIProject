@@ -28,6 +28,7 @@
   const bookIdInput = $("#book-id");
   const bookTitleInput = $("#book-title");
   const bookAuthorInput = $("#book-author");
+  const bookQuantityInput = $("#book-quantity");
   const bookMsg = $("#book-msg");
   const dialogCancel = $("#dialog-cancel");
 
@@ -151,7 +152,7 @@
   // ---------- Books ----------
   async function loadBooks() {
     bookTbody.innerHTML =
-      '<tr><td colspan="4" class="empty">加载中…</td></tr>';
+      '<tr><td colspan="5" class="empty">加载中…</td></tr>';
     try {
       const res = await api.listBooks({ page, pageSize, keyword });
       const data = res.data || {};
@@ -165,7 +166,7 @@
 
       if (!items.length) {
         bookTbody.innerHTML =
-          '<tr><td colspan="4" class="empty">暂无图书，点击「添加图书」开始</td></tr>';
+          '<tr><td colspan="5" class="empty">暂无图书，点击「添加图书」开始</td></tr>';
         return;
       }
 
@@ -176,10 +177,12 @@
           <td>${b.id}</td>
           <td>${escapeHtml(b.title)}</td>
           <td>${escapeHtml(b.author)}</td>
+          <td>${b.quantity ?? 0}</td>
           <td>
             <div class="actions">
               <button type="button" class="btn btn-secondary btn-sm" data-action="edit"
-                data-id="${b.id}" data-title="${escapeHtml(b.title)}" data-author="${escapeHtml(b.author)}">编辑</button>
+                data-id="${b.id}" data-title="${escapeHtml(b.title)}" data-author="${escapeHtml(b.author)}"
+                data-quantity="${b.quantity ?? 0}">编辑</button>
               <button type="button" class="btn btn-danger" data-action="delete" data-id="${b.id}">删除</button>
             </div>
           </td>
@@ -187,7 +190,7 @@
         )
         .join("");
     } catch (err) {
-      bookTbody.innerHTML = `<tr><td colspan="4" class="empty">${escapeHtml(err.message)}</td></tr>`;
+      bookTbody.innerHTML = `<tr><td colspan="5" class="empty">${escapeHtml(err.message)}</td></tr>`;
       if (err.status === 401) {
         api.logout();
         showAuth();
@@ -227,6 +230,7 @@
         id,
         title: btn.dataset.title,
         author: btn.dataset.author,
+        quantity: Number(btn.dataset.quantity || 0),
       });
     }
 
@@ -250,11 +254,13 @@
       bookIdInput.value = book.id;
       bookTitleInput.value = book.title;
       bookAuthorInput.value = book.author;
+      bookQuantityInput.value = book.quantity ?? 1;
     } else {
       dialogTitle.textContent = "添加图书";
       bookIdInput.value = "";
       bookTitleInput.value = "";
       bookAuthorInput.value = "";
+      bookQuantityInput.value = 1;
     }
     dialog.showModal();
     bookTitleInput.focus();
@@ -270,13 +276,19 @@
     const id = bookIdInput.value;
     const title = bookTitleInput.value.trim();
     const author = bookAuthorInput.value.trim();
+    const quantity = Number(bookQuantityInput.value);
+
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      showMsg(bookMsg, "数量须为大于等于 0 的整数");
+      return;
+    }
 
     try {
       if (id) {
-        await api.updateBook(Number(id), title, author);
+        await api.updateBook(Number(id), title, author, quantity);
         toast("更新成功");
       } else {
-        await api.createBook(title, author);
+        await api.createBook(title, author, quantity);
         toast("添加成功");
         page = 1;
       }
