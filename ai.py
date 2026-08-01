@@ -4,21 +4,23 @@ from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import InMemorySaver
-
+from sqlalchemy import select
 from auth import get_current_user
-from database import User
+from database import User, Book, AsyncSessionLocal
 from config import config
+from langchain.tools import tool
+from langchain_core.runnables import RunnableConfig
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 llm = ChatOpenAI(
-    model=config.LLM_MODEL,
-    api_key=config.API_KEY,
-    base_url=config.BASE_URL,
-    temperature=0.7,
-    timeout=120,
-    max_retries=2,
-)
+        model=config.LLM_MODEL,
+        api_key=config.API_KEY,
+        base_url=config.BASE_URL,
+        temperature=0.7,
+        timeout=120,
+        max_retries=2,
+    )
 
 
 class ChatRequest(BaseModel):
@@ -30,31 +32,80 @@ class ChatResponse(BaseModel):
     thread_id: str
 
 
-SYSTEM_PROMPT = """你是一个专业的图书推荐助手。
-你的职责是只回答与书籍、阅读、文学、作者、图书推荐相关的问题。
-如果用户问的问题与书籍无关，请礼貌地拒绝回答，并引导用户询问书籍相关的问题。
-你可以结合当前会话里已经聊过的内容继续回答。"""
+SYSTEM_PROMPT = """你是图书馆的馆藏管理助手，协助管理员维护图书数据。
+
+你可以：
+1. 回答与书籍、馆藏、阅读相关的问题；
+2. 当管理员要求上架/录入图书时，调用 create_book_tool（需要书名和作者）；
+3. 当管理员明确确认要删除/下架某本书时，再调用 delete_book_tool（需要书名）。
+
+注意：
+- 删除前若管理员尚未确认，先向管理员确认，不要擅自删除；
+- 一次处理多本书时，优先在同一轮里合理调用工具，并根据工具返回结果如实汇报；
+- 与图书管理无关的问题，请礼貌拒绝并引导回馆藏相关话题；
+- 结合当前会话已聊过的内容继续回答。"""
 
 checkpointer = InMemorySaver()
 
-agent = create_agent(
-    model=llm,
-    tools=[],
-    system_prompt=SYSTEM_PROMPT,
-    checkpointer=checkpointer,
-)
+@tool
+async def create_book_tool(title:str,author:str,config:RunnableConfig)->str:
+    """
+    当管理员要上架/录入新书时调用。需要书名和作者。
+    """
+    user_id = config.get("configurable", {}).get("user_id")
+    if not user_id:
+        return "权限不足，无法添加书籍"
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            result = await db.execute(select(Book).where(Book.title == title, Book.author == author))
+            result = result.scalar_one_or_none()
+            if result:
+                return f"书籍{title}已存在"
+            else:
+                db.add(Book(title=title, author=author, user_id=user_id))
+                return f"书籍{title}录入成功"
 
+@tool
+async def delete_book_tool(title:str,config:RunnableConfig)->str:
+    """
+    当管理员说要删除/下架书时候调用，需要向管理员确认之后在删除
+    """
+    user_id = config.get("configurable", {}).get("user_id")
+    if not user_id:
+        return "权限不足，无法删除书籍"
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            result = await db.execute(select(Book).where(Book.title == title))
+            result = result.scalar_one_or_none()
+            if  not result:
+                return f"书籍{title}不存在"
+            else:
+                await db.delete(result)
+                return f"书籍{title}已删除"
+
+agent = create_agent(
+        model=llm,
+        tools=[create_book_tool,delete_book_tool],
+        system_prompt=SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+            )
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
+    if not current_user:
+        raise HTTPException(status_code=401, detail="请先登录")
     question = (request.question or "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="问题不能为空")
-
     messages = [{"role": "user", "content": question}]
-    config_run = {"configurable": {"thread_id": str(current_user.id)}}
+    config_run = {
+        "configurable": {
+            "thread_id": str(current_user.id),
+            "user_id": current_user.id,
+        }
+    }
     try:
-        result = agent.invoke({"messages": messages}, config=config_run)
+        result =await agent.ainvoke({"messages": messages}, config=config_run)
         answer = result["messages"][-1].content
         return ChatResponse(answer=answer, thread_id=str(current_user.id))
     except Exception as e:

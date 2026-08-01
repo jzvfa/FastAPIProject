@@ -125,14 +125,14 @@ async def create_book(
 
 
 @app.get("/books/{book_id}")
-async def get_book(book_id: int, db: AsyncSession = Depends(get_db)):
+async def get_book(book_id: int, db: AsyncSession = Depends(get_db),current_user: User = Depends(get_current_user)):
     cache_key = f"book:{book_id}"
     cached_book = await get_cache(cache_key)
     if cached_book:
         logger.info(f"✅ 命中了 Redis 缓存: {cache_key}")
         return success_response(data=cached_book)
 
-    result = await db.execute(select(Book).where(Book.id == book_id))
+    result = await db.execute(select(Book).where(Book.user_id == current_user.id))
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="图书不存在")
@@ -152,8 +152,7 @@ async def update_book(
 ):
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
-    if book.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权限操作")
+    
     if not book:
         raise HTTPException(status_code=404, detail="图书不存在")
 
@@ -174,13 +173,11 @@ async def delete_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if book.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权限操作")
+   
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="图书不存在")
-
     await db.delete(book)
     await db.commit()
 
