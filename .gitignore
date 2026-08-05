@@ -21,6 +21,10 @@ __pycache__/
 logs/
 *.log
 
+# FAISS 索引（本地生成，不提交）
+data/faiss_books/*
+!data/faiss_books/.gitkeep
+
 # IDE
 .idea/
 .vscode/

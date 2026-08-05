@@ -102,7 +102,7 @@ async def delete_book_tool(title:str,config:RunnableConfig)->str:
                 return f"书籍{title}已删除"
 
 @tool
-async def get_book_tool(title: str,author:str,config: RunnableConfig) -> str:
+async def get_book_tool(title: str, author: str, config: RunnableConfig) -> str:
     """
     当管理员要获取书籍数量时调用，需要书名
     """
@@ -126,12 +126,6 @@ agent = create_agent(
             )
 
 
-def _is_broken_checkpoint_error(exc: Exception) -> bool:
-    """上一轮中断后，checkpoint 可能残留未完成的 tool_calls。"""
-    msg = str(exc).lower()
-    return "tool_calls" in msg or "tool_call_id" in msg
-
-
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
     if not current_user:
@@ -148,18 +142,9 @@ async def chat(request: ChatRequest, current_user: User = Depends(get_current_us
         }
     }
     try:
-        result = await agent.ainvoke({"messages": messages}, config=config_run)
+        result =await agent.ainvoke({"messages":messages},config=config_run)
+        result = result["messages"][-1].content
+        return ChatResponse(answer=result, thread_id=thread_id)
     except Exception as e:
-        # 刷新页面没用：记忆在服务端按 thread_id 保存。清掉坏会话后重试一次。
         checkpointer.delete_thread(thread_id)
-        if not _is_broken_checkpoint_error(e):
-            # 非坏会话错误也清掉，避免半截状态卡住后续对话
-            raise HTTPException(status_code=500, detail=f"AI 服务调用失败: {str(e)}") from e
-        try:
-            result = await agent.ainvoke({"messages": messages}, config=config_run)
-        except Exception as e2:
-            checkpointer.delete_thread(thread_id)
-            raise HTTPException(status_code=500, detail=f"AI 服务调用失败: {str(e2)}") from e2
-
-    answer = result["messages"][-1].content
-    return ChatResponse(answer=answer, thread_id=thread_id)
+        return ChatResponse(answer=f"AI 服务调用失败: {str(e)},请重试", thread_id=thread_id)

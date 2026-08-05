@@ -21,8 +21,10 @@ services:
   app:
     build: .
     container_name: book-api
-    ports:
-      - "8000:8000"
+    # 不再直接对外暴露 8000：统一走 Nginx:80
+    # 调试若要直连 uvicorn，可临时加回: "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       - mysql
       - redis
@@ -39,6 +41,17 @@ services:
       LLM_MODEL: ${LLM_MODEL}
     volumes:
       - ./logs:/app/logs
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: book-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - app
 
 volumes:
   mysql_data:

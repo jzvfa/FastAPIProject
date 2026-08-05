@@ -1,0 +1,2 @@
+# FAISS 索引由 rag.rebuild_index() 生成后会落在本目录。
+# 生成的二进制文件已在 .gitignore 中忽略，勿手改。
