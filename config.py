@@ -20,4 +20,10 @@ class Config:
     BASE_URL = os.getenv("BASE_URL")
     LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
+    # RAG embedding（可与对话使用不同服务商；未配置时回退到对话的 Key/URL）
+    EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY") or API_KEY
+    EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL") or BASE_URL
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+
+
 config = Config()

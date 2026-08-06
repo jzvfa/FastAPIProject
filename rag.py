@@ -16,6 +16,7 @@ from pathlib import Path
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
+from loguru import logger
 from sqlalchemy import select
 
 from config import config
@@ -24,9 +25,9 @@ from database import AsyncSessionLocal, Book
 INDEX_PATH = Path("data/faiss_books")
 
 embeddings = OpenAIEmbeddings(
-    model=config.LLM_MODEL,
-    api_key=config.API_KEY,
-    base_url=config.BASE_URL,
+    model=config.EMBEDDING_MODEL,
+    api_key=config.EMBEDDING_API_KEY,
+    base_url=config.EMBEDDING_BASE_URL,
 )
 
 async def add_books_to_faiss():
@@ -44,13 +45,28 @@ async def add_book_to_faiss(books: list[Book]):
 
     if not docs:
         return
-    
-    if INDEX_PATH.exists():
-        db_faiss = FAISS.load_local(INDEX_PATH, embeddings)
-        db_faiss.add_documents(docs)
-        db_faiss.save_local(INDEX_PATH)
-    else:
-        db_faiss = FAISS.from_documents(docs, embeddings)
-        db_faiss.save_local(INDEX_PATH)
+
+    db_faiss = FAISS.from_documents(docs, embeddings)
+    db_faiss.save_local(str(INDEX_PATH))
+
+async def add_book():
+    books = await add_books_to_faiss()
+    await add_book_to_faiss(books)
 
 
+async def refresh_catalog_index() -> None:
+    """馆藏增删改成功后调用：重建 FAISS。失败不抛出，避免拖垮主业务。"""
+    try:
+        await add_book()
+    except Exception:
+        logger.exception("重建馆藏索引失败")
+
+
+def search_books(query: str, k: int = 3) -> list[str]:
+    db_faiss = FAISS.load_local(
+        str(INDEX_PATH),
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )
+    hits = db_faiss.similarity_search(query, k=k)
+    return [doc.page_content for doc in hits]

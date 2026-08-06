@@ -17,6 +17,7 @@ from loguru import logger
 import sys
 
 from ai import router as ai_router
+from rag import refresh_catalog_index
 
 # ---------- 日志配置 ----------
 logger.add(
@@ -132,6 +133,7 @@ async def create_book(
     db.add(new_book)
     await db.commit()
     await db.refresh(new_book)
+    await refresh_catalog_index()
     return success_response(data=new_book, msg="添加成功")
 
 
@@ -159,6 +161,7 @@ async def update_book(
     book.quantity = book_update.quantity
     await db.commit()
     await db.refresh(book)
+    await refresh_catalog_index()
     return success_response(data=book, msg="更新成功")
 
 
@@ -174,6 +177,7 @@ async def delete_book(
         raise HTTPException(status_code=404, detail="图书不存在")
     await db.delete(book)
     await db.commit()
+    await refresh_catalog_index()
     return success_response(msg=f"图书 ID {book_id} 已删除")
 
 
