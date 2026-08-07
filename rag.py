@@ -44,6 +44,10 @@ async def add_book_to_faiss(books: list[Book]):
     INDEX_PATH.mkdir(parents=True, exist_ok=True)
 
     if not docs:
+        for name in ("index.faiss", "index.pkl"):
+            path = INDEX_PATH / name
+            if path.exists():
+                path.unlink()
         return
 
     db_faiss = FAISS.from_documents(docs, embeddings)
@@ -55,7 +59,7 @@ async def add_book():
 
 
 async def refresh_catalog_index() -> None:
-    """馆藏增删改成功后调用：重建 FAISS。失败不抛出，避免拖垮主业务。"""
+    """馆藏增删改成功后调用：重建 FAISS。失败不抛出,避免拖垮主业务。"""
     try:
         await add_book()
     except Exception:

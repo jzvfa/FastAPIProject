@@ -96,6 +96,8 @@ async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("数据库表检查/创建完成！")
+    await refresh_catalog_index()
+    logger.info("FAISS 索引重建完成！")
 
 
 # ---------- 图书 CRUD ----------
