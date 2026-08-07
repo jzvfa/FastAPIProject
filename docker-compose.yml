@@ -39,8 +39,12 @@ services:
       API_KEY: ${API_KEY}
       BASE_URL: ${BASE_URL}
       LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
     volumes:
       - ./logs:/app/logs
+      - ./data/faiss_books:/app/data/faiss_books
 
   nginx:
     image: nginx:1.27-alpine
