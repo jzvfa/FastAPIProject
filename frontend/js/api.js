@@ -132,11 +132,61 @@ const api = {
     return request(`/books/${id}`, { method: "DELETE" });
   },
 
-  // ---------- AI ----------
-  async chat(question) {
-    return request("/ai/chat", {
+  // ---------- AI（SSE 流式）----------
+  async chatStream(question, { onText, onError, onDone } = {}) {
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    };
+    const token = TokenStore.get();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/ai/chat`, {
       method: "POST",
-      json: { question },
+      headers,
+      body: JSON.stringify({ question }),
     });
+
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const data = await res.json();
+        msg = data.msg || data.detail || msg;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+
+      for (const part of parts) {
+        const line = part.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let payload;
+        try {
+          payload = JSON.parse(line.slice(6));
+        } catch (_) {
+          continue;
+        }
+        if (payload.error) {
+          onError?.(payload.error);
+          return;
+        }
+        if (payload.done) {
+          onDone?.();
+          return;
+        }
+        if (payload.text) onText?.(payload.text);
+      }
+    }
+    onDone?.();
   },
 };

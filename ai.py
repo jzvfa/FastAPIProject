@@ -1,5 +1,8 @@
 # ai.py
+import json
+
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
@@ -26,11 +29,6 @@ llm = ChatOpenAI(
 
 class ChatRequest(BaseModel):
     question: str
-
-
-class ChatResponse(BaseModel):
-    answer: str
-    thread_id: str
 
 
 SYSTEM_PROMPT = """你是图书馆的馆藏管理助手，协助管理员维护图书数据。
@@ -155,9 +153,7 @@ agent = create_agent(
             )
 
 
-
-
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat")
 async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
     if not current_user:
         raise HTTPException(status_code=401, detail="请先登录")
@@ -172,13 +168,25 @@ async def chat(request: ChatRequest, current_user: User = Depends(get_current_us
             "user_id": current_user.id,
         }
     }
-    try:
-        result =await agent.ainvoke({"messages":messages},config=config_run)
-        result = result["messages"][-1].content
-        return ChatResponse(answer=result, thread_id=thread_id)
-    except Exception as e:
-        checkpointer.delete_thread(thread_id)
-        return ChatResponse(answer=f"AI 服务调用失败: {str(e)},请重试", thread_id=thread_id)
 
+    async def event_gen():
+        try:
+            async for event in agent.astream_events(
+                {"messages": messages},
+                config=config_run,
+                version="v2",
+            ):
+                if event.get("event") != "on_chat_model_stream":
+                    continue
+                chunk = event.get("data", {}).get("chunk")
+                if chunk is None:
+                    continue
+                text = chunk.content
+                if isinstance(text, str) and text:
+                    yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            checkpointer.delete_thread(thread_id)
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
-    
+    return StreamingResponse(event_gen(), media_type="text/event-stream")

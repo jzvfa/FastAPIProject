@@ -320,12 +320,27 @@
     const loading = appendBubble("思考中…", "bot loading");
 
     try {
-      const res = await api.chat(question);
-      loading.remove();
-      appendBubble(res.answer || "(无回复)", "bot");
+      loading.classList.remove("loading");
+      loading.textContent = "";
+      let gotText = false;
+      await api.chatStream(question, {
+        onText(text) {
+          gotText = true;
+          loading.textContent += text;
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        },
+        onError(err) {
+          loading.textContent = `出错了：${err}`;
+        },
+        onDone() {
+          if (!gotText && !loading.textContent) {
+            loading.textContent = "(无回复)";
+          }
+        },
+      });
     } catch (err) {
-      loading.remove();
-      appendBubble(`出错了：${err.message}`, "bot");
+      loading.classList.remove("loading");
+      loading.textContent = `出错了：${err.message}`;
     } finally {
       chatSubmit.disabled = false;
       chatInput.focus();
